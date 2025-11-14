@@ -1,4 +1,26 @@
+# Dependencies
 node_modules/
+npm-debug.log*
+
+# Environment variables
 .env
+.env.local
+
+# Database files (if using SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# OS generated files
 .DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs
 *.log

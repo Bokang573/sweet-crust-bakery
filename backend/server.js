@@ -1,149 +1,158 @@
 const express = require('express');
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const cors = require('cors');
-const bodyParser = require('body-parser');
+const path = require('path');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend')));
 
-// MySQL Connection
+// Database connection
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'mysql' // Connect to default database first
+    database: 'sweet_crust_bakery'
 });
 
-// Connect to MySQL
+// Connect to database
 db.connect((err) => {
     if (err) {
-        console.log('MySQL connection failed. Make sure XAMPP MySQL is running.');
-        console.log('Error:', err.message);
+        console.error('❌ Database connection failed:', err.message);
         return;
     }
-    console.log('Connected to MySQL database');
-    
-    // Create database and table
-    createDatabase();
+    console.log('✅ Connected to MySQL database');
+    console.log('📊 Using your existing MySQL table structure');
+    checkAndInsertSampleData();
 });
 
-function createDatabase() {
-    // Create database if not exists
-    db.query('CREATE DATABASE IF NOT EXISTS bakery_orders', (err) => {
+function checkAndInsertSampleData() {
+    // Use the correct column name: customer_name (not customerName)
+    const checkSQL = `SELECT COUNT(*) as count FROM orders WHERE customer_name IN ('Bokang Nts''along', 'Tebello Mosh', 'Skomota Dance', 'Sargent Kokobela', 'Monyamane Bots''o')`;
+    
+    db.query(checkSQL, (err, results) => {
         if (err) {
-            console.log('Error creating database:', err.message);
+            console.error('Error checking data:', err);
+            // If the check fails, just continue - the data might already be there
+            console.log('Continuing without sample data check...');
             return;
         }
         
-        // Use the database
-        db.query('USE bakery_orders', (err) => {
-            if (err) {
-                console.log('Error using database:', err.message);
-                return;
-            }
-            
-            // Create table if not exists
-            const createTableSQL = `
-                CREATE TABLE IF NOT EXISTS orders (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    order_id VARCHAR(50) NOT NULL UNIQUE,
-                    customer_name VARCHAR(100) NOT NULL,
-                    product_ordered VARCHAR(100) NOT NULL,
-                    quantity INT NOT NULL,
-                    order_date DATE NOT NULL,
-                    order_status ENUM('Pending', 'Completed') DEFAULT 'Pending',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `;
-            
-            db.query(createTableSQL, (err) => {
-                if (err) {
-                    console.log('Error creating table:', err.message);
-                } else {
-                    console.log('Database and table ready!');
-                    
-                    // Insert sample data
-                    insertSampleData();
-                }
-            });
-        });
+        if (results[0].count === 0) {
+            console.log('📝 Inserting sample data...');
+            insertSampleData();
+        } else {
+            console.log('✅ Sample data already exists');
+        }
     });
 }
 
 function insertSampleData() {
-    const checkSQL = 'SELECT COUNT(*) as count FROM orders';
-    db.query(checkSQL, (err, results) => {
-        if (err) return;
-        
-        if (results[0].count === 0) {
-            const sampleSQL = `
-                INSERT INTO orders (order_id, customer_name, product_ordered, quantity, order_date, order_status) 
-                VALUES 
-                ('ORD001', 'John Doe', 'Cake', 2, '2024-01-15', 'Pending'),
-                ('ORD002', 'Jane Smith', 'Bread', 5, '2024-01-15', 'Completed')
-            `;
-            db.query(sampleSQL);
-            console.log('Sample data inserted');
+    // Use INSERT IGNORE to avoid duplicate errors
+    const insertSQL = `
+        INSERT IGNORE INTO orders (order_id, customer_name, product_ordered, quantity, order_date, order_status) VALUES
+        ('ORD001', 'Bokang Nts''along', 'cake', 2, '2025-11-14', 'Complete'),
+        ('ORD002', 'Tebello Mosh', 'bread', 5, '2025-11-14', 'Pending'),
+        ('ORD003', 'Skomota Dance', 'muffin', 12, '2025-11-13', 'Complete'),
+        ('ORD004', 'Sargent Kokobela', 'pastry', 6, '2025-11-13', 'Pending'),
+        ('ORD005', 'Monyamane Bots''o', 'croissant', 4, '2025-11-13', 'Pending')
+    `;
+    
+    db.query(insertSQL, (err, result) => {
+        if (err) {
+            console.error('Error inserting sample data:', err);
+        } else {
+            if (result.affectedRows > 0) {
+                console.log(`✅ ${result.affectedRows} sample records inserted`);
+            } else {
+                console.log('✅ Sample data already exists (no duplicates inserted)');
+            }
         }
     });
 }
 
-// Routes
-
-// Get all orders
+// API Routes - Using your exact column names
 app.get('/api/orders', (req, res) => {
-    const sql = 'SELECT * FROM orders ORDER BY created_at DESC';
+    const sql = `
+        SELECT 
+            id,
+            order_id as orderId,
+            customer_name as customerName,
+            product_ordered as product,
+            quantity,
+            order_date as orderDate,
+            order_status as status,
+            created_at as createdAt,
+            updated_at as updatedAt
+        FROM orders 
+        ORDER BY order_date DESC, id DESC
+    `;
+    
     db.query(sql, (err, results) => {
         if (err) {
-            console.error('Error fetching orders:', err.message);
+            console.error('Error fetching orders:', err);
             return res.status(500).json({ error: 'Failed to fetch orders' });
         }
         res.json(results);
     });
 });
 
-// Add new order
 app.post('/api/orders', (req, res) => {
-    const { order_id, customer_name, product_ordered, quantity, order_date, order_status } = req.body;
+    const { orderId, customerName, product, quantity, orderDate, status } = req.body;
     
     // Validation
-    if (!order_id || !customer_name || !product_ordered || !quantity || !order_date) {
+    if (!orderId || !customerName || !product || !quantity || !orderDate || !status) {
         return res.status(400).json({ error: 'All fields are required' });
     }
-
-    const sql = `INSERT INTO orders (order_id, customer_name, product_ordered, quantity, order_date, order_status) 
-                 VALUES (?, ?, ?, ?, ?, ?)`;
     
-    db.query(sql, [order_id, customer_name, product_ordered, quantity, order_date, order_status || 'Pending'], 
-        (err, result) => {
-            if (err) {
-                if (err.code === 'ER_DUP_ENTRY') {
-                    return res.status(400).json({ error: 'Order ID already exists' });
-                }
-                console.error('Error adding order:', err.message);
-                return res.status(500).json({ error: 'Failed to add order' });
+    // Convert status to match your ENUM values ('Pending', 'Complete')
+    const mysqlStatus = status === 'completed' ? 'Complete' : 'Pending';
+    
+    const sql = `
+        INSERT INTO orders (order_id, customer_name, product_ordered, quantity, order_date, order_status) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    `;
+    
+    db.query(sql, [orderId, customerName, product, quantity, orderDate, mysqlStatus], (err, result) => {
+        if (err) {
+            if (err.code === 'ER_DUP_ENTRY') {
+                return res.status(400).json({ error: 'Order ID already exists' });
             }
-            res.json({ 
-                message: 'Order added successfully', 
-                id: result.insertId 
-            });
+            console.error('Error creating order:', err);
+            return res.status(500).json({ error: 'Failed to create order' });
+        }
+        res.json({ 
+            id: result.insertId, 
+            message: 'Order created successfully'
         });
+    });
 });
 
-// Update order status
 app.put('/api/orders/:id', (req, res) => {
-    const { order_status } = req.body;
-    const orderId = req.params.id;
-
-    const sql = 'UPDATE orders SET order_status = ? WHERE id = ?';
-    db.query(sql, [order_status, orderId], (err, result) => {
+    const { id } = req.params;
+    const { customerName, product, quantity, orderDate, status } = req.body;
+    
+    // Validation
+    if (!customerName || !product || !quantity || !orderDate || !status) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+    
+    // Convert status to match your ENUM values
+    const mysqlStatus = status === 'completed' ? 'Complete' : 'Pending';
+    
+    const sql = `
+        UPDATE orders 
+        SET customer_name=?, product_ordered=?, quantity=?, order_date=?, order_status=?, updated_at=CURRENT_TIMESTAMP 
+        WHERE id=?
+    `;
+    
+    db.query(sql, [customerName, product, quantity, orderDate, mysqlStatus, id], (err, result) => {
         if (err) {
-            console.error('Error updating order:', err.message);
+            console.error('Error updating order:', err);
             return res.status(500).json({ error: 'Failed to update order' });
         }
         if (result.affectedRows === 0) {
@@ -153,14 +162,13 @@ app.put('/api/orders/:id', (req, res) => {
     });
 });
 
-// Delete order
 app.delete('/api/orders/:id', (req, res) => {
-    const orderId = req.params.id;
-
-    const sql = 'DELETE FROM orders WHERE id = ?';
-    db.query(sql, [orderId], (err, result) => {
+    const { id } = req.params;
+    const sql = 'DELETE FROM orders WHERE id=?';
+    
+    db.query(sql, [id], (err, result) => {
         if (err) {
-            console.error('Error deleting order:', err.message);
+            console.error('Error deleting order:', err);
             return res.status(500).json({ error: 'Failed to delete order' });
         }
         if (result.affectedRows === 0) {
@@ -170,12 +178,20 @@ app.delete('/api/orders/:id', (req, res) => {
     });
 });
 
-// Health check
+// Health check endpoint
 app.get('/api/health', (req, res) => {
-    res.json({ message: 'Backend is running!' });
+    res.json({ 
+        status: 'OK', 
+        message: 'Sweet Crust Bakery API is running',
+        database: 'Connected'
+    });
+});
+
+// Serve frontend
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 app.listen(PORT, () => {
-    console.log(`Backend server running on http://localhost:${PORT}`);
-    console.log('Make sure XAMPP MySQL is running!');
+    console.log(`🍪 Sweet Crust Bakery Server running on http://localhost:${PORT}`);
 });
