@@ -1,14 +1,12 @@
 {
   "name": "sweet-crust-bakery",
   "version": "1.0.0",
-  "description": "Full-stack order management system for Sweet Crust Bakery",
+  "private": true,
   "scripts": {
-    "build": "npm run build"
+    "build": "cd backend && npm install",
+    "start": "cd backend && npm start"
   },
   "engines": {
     "node": ">=14.0.0"
-  },
-  "keywords": ["bakery", "order-management", "nodejs", "mysql"],
-  "author": "Bokang Nts'along",
-  "license": "MIT"
+  }
 }
